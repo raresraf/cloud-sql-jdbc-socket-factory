@@ -34,7 +34,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.Collections;
+import javax.naming.NameNotFoundException;
 import javax.net.ssl.SSLHandshakeException;
 import org.junit.After;
 import org.junit.Before;
@@ -69,7 +71,7 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             .withIpTypes("PRIMARY")
             .build();
 
-    Connector c = newConnector(config.getConnectorConfig(), DEFAULT_SERVER_PROXY_PORT);
+    Connector c = newConnector(config.getConnectorConfig(), DEFAULT_SERVER_PROXY_PORT, null, null);
     IllegalArgumentException ex =
         assertThrows(IllegalArgumentException.class, () -> c.connect(config, TEST_MAX_REFRESH_MS));
 
@@ -94,7 +96,7 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
 
     int port = sslServer.start(PUBLIC_IP);
 
-    Connector connector = newConnector(config.getConnectorConfig(), port);
+    Connector connector = newConnector(config.getConnectorConfig(), port, null, null);
     SSLHandshakeException ex =
         assertThrows(
             SSLHandshakeException.class, () -> connector.connect(config, TEST_MAX_REFRESH_MS));
@@ -122,7 +124,25 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
 
     int port = sslServer.start(PRIVATE_IP);
 
-    Connector connector = newConnector(config.getConnectorConfig(), port);
+    Connector connector = newConnector(config.getConnectorConfig(), port, null, null);
+
+    Socket socket = connector.connect(config, TEST_MAX_REFRESH_MS);
+
+    assertThat(readLine(socket)).isEqualTo(SERVER_MESSAGE);
+  }
+
+  @Test
+  public void create_successfulPublicConnection() throws IOException, InterruptedException {
+    FakeSslServer sslServer = new FakeSslServer();
+    ConnectionConfig config =
+        new ConnectionConfig.Builder()
+            .withCloudSqlInstance("myProject:myRegion:myInstance")
+            .withIpTypes("PRIMARY")
+            .build();
+
+    int port = sslServer.start(PUBLIC_IP);
+
+    Connector connector = newConnector(config.getConnectorConfig(), port, null, null);
 
     Socket socket = connector.connect(config, TEST_MAX_REFRESH_MS);
 
@@ -137,15 +157,13 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
         new ConnectionConfig.Builder()
             .withDomainName("db.example.com")
             .withIpTypes("PRIMARY")
-            .withConnectorConfig(
-                new ConnectorConfig.Builder()
-                    .withInstanceNameResolver((domainName) -> "myProject:myRegion:myInstance")
-                    .build())
             .build();
 
     int port = sslServer.start(PUBLIC_IP);
 
-    Connector connector = newConnector(config.getConnectorConfig(), port);
+    Connector connector =
+        newConnector(
+            config.getConnectorConfig(), port, "db.example.com", "myProject:myRegion:myInstance");
 
     Socket socket = connector.connect(config, TEST_MAX_REFRESH_MS);
 
@@ -153,42 +171,40 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
   }
 
   @Test
-  public void create_throwsErrorForDomainNameWithNoResolver()
-      throws IOException, InterruptedException {
-    // The server TLS certificate matches myProject:myRegion:myInstance
-    FakeSslServer sslServer = new FakeSslServer();
+  public void create_throwsErrorForUnresolvedDomainName() throws IOException {
     ConnectionConfig config =
         new ConnectionConfig.Builder()
-            .withDomainName("db.example.com")
+            .withDomainName("baddomain.example.com")
             .withIpTypes("PRIMARY")
             .build();
+    Connector c =
+        newConnector(
+            config.getConnectorConfig(),
+            DEFAULT_SERVER_PROXY_PORT,
+            "baddomain.example.com",
+            "invalid-name");
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> c.connect(config, TEST_MAX_REFRESH_MS));
 
-    int port = sslServer.start(PUBLIC_IP);
-
-    Connector connector = newConnector(config.getConnectorConfig(), port);
-    IllegalStateException ex =
-        assertThrows(
-            IllegalStateException.class, () -> connector.connect(config, TEST_MAX_REFRESH_MS));
-
-    assertThat(ex).hasMessageThat().contains("ConnectorConfig.resolver is not set");
+    assertThat(ex)
+        .hasMessageThat()
+        .contains("Cloud SQL connection name is invalid: \"baddomain.example.com\"");
   }
 
   @Test
-  public void create_successfulPublicConnection() throws IOException, InterruptedException {
-    FakeSslServer sslServer = new FakeSslServer();
+  public void create_throwsErrorForDomainNameBadTargetValue() throws IOException {
     ConnectionConfig config =
         new ConnectionConfig.Builder()
-            .withCloudSqlInstance("myProject:myRegion:myInstance")
+            .withDomainName("badvalue.example.com")
             .withIpTypes("PRIMARY")
             .build();
+    Connector c = newConnector(config.getConnectorConfig(), DEFAULT_SERVER_PROXY_PORT, null, null);
+    RuntimeException ex =
+        assertThrows(RuntimeException.class, () -> c.connect(config, TEST_MAX_REFRESH_MS));
 
-    int port = sslServer.start(PUBLIC_IP);
-
-    Connector connector = newConnector(config.getConnectorConfig(), port);
-
-    Socket socket = connector.connect(config, TEST_MAX_REFRESH_MS);
-
-    assertThat(readLine(socket)).isEqualTo(SERVER_MESSAGE);
+    assertThat(ex)
+        .hasMessageThat()
+        .contains("Cloud SQL connection name is invalid: \"badvalue.example.com\"");
   }
 
   private boolean isWindows() {
@@ -218,7 +234,7 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
 
       unixSocketServer.start();
 
-      Connector connector = newConnector(config.getConnectorConfig(), 10000);
+      Connector connector = newConnector(config.getConnectorConfig(), 10000, null, null);
 
       Socket socket = connector.connect(config, TEST_MAX_REFRESH_MS);
 
@@ -254,7 +270,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            port);
+            port,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     Socket socket = c.connect(config, TEST_MAX_REFRESH_MS);
 
@@ -268,7 +285,7 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             .withCloudSqlInstance("myProject:notMyRegion:myInstance")
             .withIpTypes("PRIMARY")
             .build();
-    Connector c = newConnector(config.getConnectorConfig(), DEFAULT_SERVER_PROXY_PORT);
+    Connector c = newConnector(config.getConnectorConfig(), DEFAULT_SERVER_PROXY_PORT, null, null);
     RuntimeException ex =
         assertThrows(RuntimeException.class, () -> c.connect(config, TEST_MAX_REFRESH_MS));
 
@@ -292,7 +309,7 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
     IllegalArgumentException ex =
         assertThrows(
             IllegalArgumentException.class,
-            () -> newConnector(config.getConnectorConfig(), DEFAULT_SERVER_PROXY_PORT));
+            () -> newConnector(config.getConnectorConfig(), DEFAULT_SERVER_PROXY_PORT, null, null));
 
     assertThat(ex.getMessage()).contains(ConnectionConfig.CLOUD_SQL_TARGET_PRINCIPAL_PROPERTY);
   }
@@ -315,7 +332,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            DEFAULT_SERVER_PROXY_PORT);
+            DEFAULT_SERVER_PROXY_PORT,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     // Use a different project to get Api Not Enabled Error.
     TerminalException ex =
@@ -347,7 +365,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            DEFAULT_SERVER_PROXY_PORT);
+            DEFAULT_SERVER_PROXY_PORT,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     // Use a different instance to simulate incorrect permissions.
     TerminalException ex =
@@ -379,7 +398,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            DEFAULT_SERVER_PROXY_PORT);
+            DEFAULT_SERVER_PROXY_PORT,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     // If the gateway is down, then this is a temporary error, not a fatal error.
     RuntimeException ex =
@@ -421,7 +441,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            port);
+            port,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     Socket socket = c.connect(config, TEST_MAX_REFRESH_MS);
 
@@ -454,7 +475,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            port);
+            port,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     Socket socket = c.connect(config, TEST_MAX_REFRESH_MS);
 
@@ -486,7 +508,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            port);
+            port,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     Socket socket = c.connect(config, TEST_MAX_REFRESH_MS);
 
@@ -524,12 +547,14 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            DEFAULT_SERVER_PROXY_PORT);
+            DEFAULT_SERVER_PROXY_PORT,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver()));
 
     assertThrows(RuntimeException.class, () -> c.connect(config, TEST_MAX_REFRESH_MS));
   }
 
-  private Connector newConnector(ConnectorConfig config, int port) {
+  private Connector newConnector(
+      ConnectorConfig config, int port, String domainName, String instanceName) {
     ConnectionInfoRepositoryFactory factory =
         new StubConnectionInfoRepositoryFactory(fakeSuccessHttpTransport(Duration.ofSeconds(0)));
     Connector connector =
@@ -541,7 +566,8 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
             clientKeyPair,
             10,
             TEST_MAX_REFRESH_MS,
-            port);
+            port,
+            new DnsInstanceConnectionNameResolver(new MockDnsResolver(domainName, instanceName)));
     return connector;
   }
 
@@ -549,5 +575,31 @@ public class ConnectorTest extends CloudSqlCoreTestingBase {
     BufferedReader bufferedReader =
         new BufferedReader(new InputStreamReader(socket.getInputStream(), UTF_8));
     return bufferedReader.readLine();
+  }
+
+  private static class MockDnsResolver implements DnsResolver {
+    private final String domainName;
+    private final String instanceName;
+
+    public MockDnsResolver() {
+      this.domainName = null;
+      this.instanceName = null;
+    }
+
+    public MockDnsResolver(String domainName, String instanceName) {
+      this.domainName = domainName;
+      this.instanceName = instanceName;
+    }
+
+    @Override
+    public Collection<String> resolveTxt(String domainName) throws NameNotFoundException {
+      if (this.domainName != null && this.domainName.equals(domainName)) {
+        return Collections.singletonList(this.instanceName);
+      }
+      if ("badvalue.example.com".equals(domainName)) {
+        return Collections.singletonList("not-an-instance-name");
+      }
+      throw new NameNotFoundException("Not found: " + domainName);
+    }
   }
 }
