@@ -68,6 +68,9 @@ public class TestCertificateGenerator {
 
   private static final X500Name SERVER_CERT_SUBJECT =
       new X500Name("C=US,O=Google\\, Inc,CN=myProject:myInstance");
+
+  private static final X500Name SERVER_CERT_2_SUBJECT =
+      new X500Name("C=US,O=Google\\, Inc,CN=myProject:myInstance2");
   private static final X500Name DOMAIN_SERVER_CERT_SUBJECT =
       new X500Name("C=US,O=Google\\, Inc,CN=example.com:myProject:myInstance");
 
@@ -80,6 +83,7 @@ public class TestCertificateGenerator {
   private final X509Certificate signingCaCert;
   private final X509Certificate serverCaCert;
   private final X509Certificate serverCertificate;
+  private final X509Certificate serverCertificate2;
   private final X509Certificate domainServerCertificate;
 
   private final String PEM_HEADER = "-----BEGIN CERTIFICATE-----";
@@ -114,6 +118,15 @@ public class TestCertificateGenerator {
       this.serverCertificate =
           buildSignedCertificate(
               SERVER_CERT_SUBJECT,
+              serverKeyPair.getPublic(),
+              SERVER_CA_SUBJECT,
+              serverCaKeyPair.getPrivate(),
+              ONE_YEAR_FROM_NOW,
+              null);
+
+      this.serverCertificate2 =
+          buildSignedCertificate(
+              SERVER_CERT_2_SUBJECT,
               serverKeyPair.getPublic(),
               SERVER_CA_SUBJECT,
               serverCaKeyPair.getPrivate(),
@@ -239,6 +252,10 @@ public class TestCertificateGenerator {
   /** Returns the server-side proxy certificate. */
   public X509Certificate getServerCertificate() {
     return serverCertificate;
+  }
+
+  public X509Certificate getServerCertificate2() {
+    return serverCertificate2;
   }
 
   /** Creates a certificate with the given subject and signed by the root CA cert. */

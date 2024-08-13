@@ -259,7 +259,7 @@ public class RefreshAheadConnectionInfoCacheTest {
     Map<IpType, String> ips = Collections.singletonMap(IpType.PUBLIC, "10.1.1.1");
     try {
       return new ConnectionInfo(
-          new InstanceMetadata(ips, null),
+          new InstanceMetadata(ips, null, null),
           new SslData(
               null, KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()), null),
           Instant.now().plus(amount, unit));
@@ -577,7 +577,7 @@ public class RefreshAheadConnectionInfoCacheTest {
                     IpType.PUBLIC, "10.1.2.3",
                     IpType.PRIVATE, "10.10.10.10",
                     IpType.PSC, "abcde.12345.us-central1.sql.goog"),
-                null),
+                null, null),
             sslData,
             Instant.now().plus(1, ChronoUnit.HOURS));
     AtomicInteger refreshCount = new AtomicInteger();
@@ -631,7 +631,7 @@ public class RefreshAheadConnectionInfoCacheTest {
     SslData sslData = new SslData(null, null, null);
     ConnectionInfo info =
         new ConnectionInfo(
-            new InstanceMetadata(ImmutableMap.of(IpType.PUBLIC, "10.1.2.3"), null),
+            new InstanceMetadata(ImmutableMap.of(IpType.PUBLIC, "10.1.2.3"), null, null),
             sslData,
             Instant.now().plus(1, ChronoUnit.HOURS));
     AtomicInteger refreshCount = new AtomicInteger();

@@ -43,13 +43,16 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.junit.Before;
 
 public class CloudSqlCoreTestingBase {
-
   static final String PUBLIC_IP = "127.0.0.1";
   // If running tests on Mac, need to run "ifconfig lo0 alias 127.0.0.2 up" first
   static final String PRIVATE_IP = "127.0.0.2";
+  // If running tests on Mac, need to run "ifconfig lo0 alias 127.0.0.3 up" first
+  static final String PRIVATE_IP_2 = "127.0.0.3";
 
   static final String SERVER_MESSAGE = "HELLO";
 
@@ -144,6 +147,15 @@ public class CloudSqlCoreTestingBase {
     return fakeSuccessHttpTransport(serverCert, certDuration, null);
   }
 
+  private String parseCertCnFromUrl(String url) {
+    Pattern p = Pattern.compile("/projects/(\\w+)/instances/(\\w+)");
+    Matcher m = p.matcher(url);
+    if (m.find()) {
+      return m.group(1) + ":" + m.group(2);
+    }
+    return null;
+  }
+
   MockHttpTransport fakeSuccessHttpTransport(
       String serverCert, Duration certDuration, String baseUrl) {
     final JsonFactory jsonFactory = new GsonFactory();
@@ -158,14 +170,27 @@ public class CloudSqlCoreTestingBase {
             }
             MockLowLevelHttpResponse response = new MockLowLevelHttpResponse();
             if (method.equals("GET") && url.contains("connectSettings")) {
+
+              // By default, use PRIVATE_IP, but if this is "myInstance2", use PRIVATE_IP_2
+              String cn = parseCertCnFromUrl(url);
+              String privateIp = PRIVATE_IP;
+              if ("myProject:myInstance2".equals(cn)) {
+                privateIp = PRIVATE_IP_2;
+              }
+
+              String userServerCert = serverCert;
+              if ("myProject:myInstance2".equals(cn)) {
+                userServerCert = TestKeys.getServerCert2Pem();
+              }
+
               ConnectSettings settings =
                   new ConnectSettings()
                       .setBackendType("SECOND_GEN")
                       .setIpAddresses(
                           ImmutableList.of(
                               new IpMapping().setIpAddress(PUBLIC_IP).setType("PRIMARY"),
-                              new IpMapping().setIpAddress(PRIVATE_IP).setType("PRIVATE")))
-                      .setServerCaCert(new SslCert().setCert(serverCert))
+                              new IpMapping().setIpAddress(privateIp).setType("PRIVATE")))
+                      .setServerCaCert(new SslCert().setCert(userServerCert))
                       .setDatabaseVersion("POSTGRES14")
                       .setRegion("myRegion");
               settings.setFactory(jsonFactory);
@@ -174,9 +199,11 @@ public class CloudSqlCoreTestingBase {
                   .setContentType(Json.MEDIA_TYPE)
                   .setStatusCode(HttpStatusCodes.STATUS_CODE_OK);
             } else if (method.equals("POST") && url.contains("generateEphemeralCert")) {
+              // https://sqladmin.googleapis.com/sql/v1beta4/projects/myProject/instances/myInstance:generateEphemeralCert
+              String cn = parseCertCnFromUrl(url);
               GenerateEphemeralCertResponse certResponse = new GenerateEphemeralCertResponse();
               certResponse.setEphemeralCert(
-                  new SslCert().setCert(TestKeys.createEphemeralCert(certDuration)));
+                  new SslCert().setCert(TestKeys.createEphemeralCert(cn, certDuration)));
               certResponse.setFactory(jsonFactory);
               response
                   .setContent(certResponse.toPrettyString())

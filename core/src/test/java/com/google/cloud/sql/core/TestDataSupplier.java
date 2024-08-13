@@ -42,7 +42,7 @@ class TestDataSupplier implements ConnectionInfoRepository {
                   IpType.PUBLIC, "10.1.2.3",
                   IpType.PRIVATE, "10.10.10.10",
                   IpType.PSC, "abcde.12345.us-central1.sql.goog"),
-              null),
+              null, null),
           new SslData(null, createKeyManagerFactory(), null),
           Instant.now().plus(1, ChronoUnit.HOURS));
 

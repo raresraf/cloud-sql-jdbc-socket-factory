@@ -289,7 +289,8 @@ class DefaultConnectionInfoRepository implements ConnectionInfoRepository {
 
         logger.debug(String.format("[%s] METADATA DONE", instanceName));
 
-        return new InstanceMetadata(ipAddrs, instanceCaCertificate);
+        return new InstanceMetadata(ipAddrs, instanceCaCertificate,
+            instanceMetadata.getDnsName());
       } catch (CertificateException ex) {
         throw new RuntimeException(
             String.format(

@@ -25,10 +25,12 @@ class InstanceMetadata {
 
   private final Map<IpType, String> ipAddrs;
   private final Certificate instanceCaCertificate;
+  private final String dnsName;
 
-  InstanceMetadata(Map<IpType, String> ipAddrs, Certificate instanceCaCertificate) {
+  InstanceMetadata(Map<IpType, String> ipAddrs, Certificate instanceCaCertificate, String dnsName) {
     this.ipAddrs = ipAddrs;
     this.instanceCaCertificate = instanceCaCertificate;
+    this.dnsName = dnsName;
   }
 
   Map<IpType, String> getIpAddrs() {
