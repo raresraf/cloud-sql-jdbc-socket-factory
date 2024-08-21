@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
+import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import javax.net.ssl.TrustManagerFactory;
 
@@ -43,18 +44,27 @@ import javax.net.ssl.TrustManagerFactory;
  */
 class InstanceCheckingTrustManagerFactory extends TrustManagerFactory {
 
-  static InstanceCheckingTrustManagerFactory newInstance(
+  static TrustManagerFactory newInstance(
       CloudSqlInstanceName instanceName, InstanceMetadata instanceMetadata)
       throws NoSuchAlgorithmException, KeyStoreException, CertificateException, IOException {
 
     TrustManagerFactory delegate = TrustManagerFactory.getInstance("X.509");
     KeyStore trustedKeyStore = KeyStore.getInstance(KeyStore.getDefaultType());
     trustedKeyStore.load(null, null);
-    trustedKeyStore.setCertificateEntry("instance", instanceMetadata.getInstanceCaCertificate());
+    for (Certificate cert : instanceMetadata.getInstanceCaCertificates()) {
+      trustedKeyStore.setCertificateEntry("ca" + cert.hashCode(), cert);
+    }
 
+    // If this is using a CAS-managed certificate, don't add the InstanceCheckingTrustManagerFactory
+    // to check the CN against the instance name.
+    if (instanceMetadata.isCasManagedCertificate()) {
+      delegate.init(trustedKeyStore);
+      return delegate;
+    }
+
+    // Otherwise, Use a custom trust manager factory that checks the CN against the instance name
     InstanceCheckingTrustManagerFactory tmf =
         new InstanceCheckingTrustManagerFactory(instanceName, delegate);
-
     tmf.init(trustedKeyStore);
 
     return tmf;

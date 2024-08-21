@@ -18,24 +18,48 @@ package com.google.cloud.sql.core;
 
 import com.google.cloud.sql.IpType;
 import java.security.cert.Certificate;
+import java.util.List;
 import java.util.Map;
 
 /** Represents the results of @link #fetchMetadata(). */
 class InstanceMetadata {
 
   private final Map<IpType, String> ipAddrs;
-  private final Certificate instanceCaCertificate;
+  private final List<Certificate> instanceCaCertificates;
+  private final boolean casManagedCertificate;
+  private final String dnsName;
 
-  InstanceMetadata(Map<IpType, String> ipAddrs, Certificate instanceCaCertificate) {
+  InstanceMetadata(Map<IpType, String> ipAddrs, List<Certificate> instanceCaCertificates) {
     this.ipAddrs = ipAddrs;
-    this.instanceCaCertificate = instanceCaCertificate;
+    this.instanceCaCertificates = instanceCaCertificates;
+    this.casManagedCertificate = false;
+    this.dnsName = "";
+  }
+
+  InstanceMetadata(
+      Map<IpType, String> ipAddrs,
+      List<Certificate> instanceCaCertificates,
+      boolean casManagedCertificate,
+      String dnsName) {
+    this.ipAddrs = ipAddrs;
+    this.instanceCaCertificates = instanceCaCertificates;
+    this.casManagedCertificate = casManagedCertificate;
+    this.dnsName = dnsName;
   }
 
   Map<IpType, String> getIpAddrs() {
     return ipAddrs;
   }
 
-  Certificate getInstanceCaCertificate() {
-    return instanceCaCertificate;
+  List<Certificate> getInstanceCaCertificates() {
+    return instanceCaCertificates;
+  }
+
+  public boolean isCasManagedCertificate() {
+    return casManagedCertificate;
+  }
+
+  public String getDnsName() {
+    return dnsName;
   }
 }
